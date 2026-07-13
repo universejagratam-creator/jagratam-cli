@@ -250,36 +250,32 @@ def analyze_topic(message):
     return {"category": "general", "keywords": [], "confidence": 0.5}
 
 
-def call_openrouter(model, messages, timeout=60):
-    """Call OpenRouter API with retry on 429."""
+def call_openrouter(model, messages, timeout=15):
+    """Call OpenRouter API — FAIL FAST, no long retries."""
     if not OPENROUTER_KEY:
         return None
     headers = {"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json"}
     data = {"model": model, "messages": messages, "max_tokens": 2000, "temperature": 0.7}
-    for attempt in range(3):
-        try:
-            req = urllib.request.Request(
-                f"{OPENROUTER_BASE}/chat/completions",
-                data=json.dumps(data).encode("utf-8"),
-                headers=headers, method="POST",
-            )
-            resp = urllib.request.urlopen(req, timeout=timeout)
-            result = json.loads(resp.read())
-            content = result["choices"][0]["message"]["content"]
-            return content if content else None
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                _model_health[model] = time.time()
-                time.sleep(3 * (attempt + 1))
-                continue
-            return None
-        except Exception:
-            return None
-    return None
+    try:
+        req = urllib.request.Request(
+            f"{OPENROUTER_BASE}/chat/completions",
+            data=json.dumps(data).encode("utf-8"),
+            headers=headers, method="POST",
+        )
+        resp = urllib.request.urlopen(req, timeout=timeout)
+        result = json.loads(resp.read())
+        content = result["choices"][0]["message"]["content"]
+        return content if content else None
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            _model_health[model] = time.time()
+        return None
+    except Exception:
+        return None
 
 
 def get_ai_response(executor_name, message, context="", previous_results=None):
-    """Get AI response for an executor. Dengan fallback semua models."""
+    """Get AI response — FAIL FAST, max 3 model attempts."""
     executor = AI_EXECUTORS.get(executor_name)
     if not executor:
         return None
@@ -291,7 +287,6 @@ def get_ai_response(executor_name, message, context="", previous_results=None):
     if context:
         messages.append({"role": "system", "content": f"Context: {context[:2000]}"})
 
-    # Build prompt with role instruction
     role_instruction = "Provide your analysis and output."
     for r, rc in COLLABORATION_ROLES.items():
         if r in message.lower() or rc["name"].lower() in message.lower():
@@ -311,26 +306,29 @@ def get_ai_response(executor_name, message, context="", previous_results=None):
 
     messages.append({"role": "user", "content": prompt})
 
-    # Try model based on preference
+    # Try max 3 models: preference match, then 2 random healthy ones
+    now = time.time()
+    tried = set()
+
+    # 1. Best preference match
     model = get_best_model(preference)
+    tried.add(model)
     content = call_openrouter(model, messages)
     if content:
         return {"content": content, "model": model}
 
-    # Fallback: try all models
-    now = time.time()
+    # 2-3. Try healthy models
     for m in FREE_MODELS:
+        if m["id"] in tried:
+            continue
         if now - _model_health.get(m["id"], 0) < HEALTH_COOLDOWN:
             continue
         content = call_openrouter(m["id"], messages)
         if content:
             return {"content": content, "model": m["id"]}
-
-    # Last resort: try ALL models
-    for m in FREE_MODELS:
-        content = call_openrouter(m["id"], messages)
-        if content:
-            return {"content": content, "model": m["id"]}
+        tried.add(m["id"])
+        if len(tried) >= 3:
+            break
 
     return None
 
