@@ -25,7 +25,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from ai_agents import (
-    OPENROUTER_BASE, OPENROUTER_KEY, FREE_MODELS,
+    OPENROUTER_BASE, OPENROUTER_KEY,
     AI_EXECUTORS, COLLABORATION_ROLES, TOPIC_ROLE_MAP,
     get_best_model, list_all_agents,
 )
@@ -121,14 +121,9 @@ def call_model_direct(model_id=None, user_prompt="", system_prompt=""):
 # /CHAT — RUANG RAPAT DEWAN KOMISARIS (Drama Style)
 # ═══════════════════════════════════════════════════════════════
 def chat_mode():
-    """Mode /chat — Semua AI berbicara dalam format drama."""
-    # Pilih AI yang akan berdiskusi (subset untuk speed)
-    discussion_agents = [
-        "kimi-k2.5", "claude-opus", "deepseek-chat", "qwen-3.5",
-        "glm-5.2", "gemini-flash", "groq-llama", "mistral-large",
-        "codex", "perplexity", "hermes", "mirofish", "deepseek-r1",
-        "freebuff", "opencode", "nemotron-super", "llama-4",
-    ]
+    """Mode /chat — Semua 62 AI berbicara dalam format drama."""
+    # SEMUA AI dari AI_EXECUTORS
+    discussion_agents = list(AI_EXECUTORS.keys())
 
     print()
     print("  ==================================================")
@@ -166,12 +161,13 @@ def chat_mode():
         print()
         print("  CEO: Selamat datang di Rapat Dewan Komisaris.")
         print(f"       Topik hari ini: \"{topic}\"")
+        print(f"       {len(discussion_agents)} AI akan berdiskusi.")
         print("       Silakan berdiskusi sesuai keahlian masing-masing.")
         print()
 
-        # FASE 1: Setiap AI berbicara
+        # FASE 1: SEMUA AI berbicara
         all_responses = []
-        for agent_id in discussion_agents:
+        for i, agent_id in enumerate(discussion_agents, 1):
             agent = AI_EXECUTORS.get(agent_id)
             if not agent:
                 continue
@@ -186,7 +182,7 @@ def chat_mode():
 
             prompt = f"Topik: {topic}\n\nBerikan pendapatmu sesuai keahlianmu. Bahasa Indonesia. 2-4 kalimat."
 
-            print(f"  [{agent['name']}] sedang berpikir...")
+            print(f"  [{i}/{len(discussion_agents)}] {agent['name']}...")
             response = call_ai_model(agent_id, prompt, context)
             if not response:
                 response = "[Tidak ada respon]"
@@ -478,7 +474,7 @@ def show_status():
     print(f"  OpenCode    : {'[OK]' if shutil.which('opencode') else '[!!] Tidak ditemukan'}")
     print(f"  OpenRouter  : {'[OK] Key ada' if OPENROUTER_KEY else '[!!] Key tidak ditemukan'}")
     print(f"  AI Agents   : {len(AI_EXECUTORS)} total")
-    print(f"  Free Models : {len(FREE_MODELS)} tersedia")
+    print(f"  Backend     : openrouter/free (auto-select)")
     print(f"  Shadow Adv. : [OK] SOP MAS Active")
     print(f"  PRD         : [OK] Active")
     print(f"  /chat       : Semua AI berbicara (drama style)")
