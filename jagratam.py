@@ -41,14 +41,41 @@ def find_opencode():
 
 
 def run_opencode(args=None):
-    """Run OpenCode with arguments."""
+    """Run OpenCode with JAGRATAM banner."""
     oc = find_opencode()
     if not oc:
         print("  ERROR: OpenCode tidak ditemukan.")
         print("  Install: npm install -g opencode-ai")
         return 1
+
+    # Show JAGRATAM banner for interactive mode
+    if not args:
+        show_banner()
+        import time
+        time.sleep(1)
+
     cmd = [oc] + (args or [])
     return subprocess.call(cmd)
+
+
+def show_banner():
+    """Tampilkan JAGRATAM banner sebelum OpenCode TUI."""
+    print()
+    print("  ╔═══════════════════════════════════════════════════════════╗")
+    print("  ║                                                         ║")
+    print("  ║   ██╗   ██╗ █████╗ ██████╗  █████╗  ██████╗ ███████╗    ║")
+    print("  ║   ██║   ██║██╔══██╗██╔══██╗██╔══██╗██╔════╝ ██╔════╝    ║")
+    print("  ║   ██║   ██║███████║██████╔╝███████║██║  ███╗█████╗      ║")
+    print("  ║   ╚██╗ ██╔╝██╔══██║██╔══██╗██╔══██║██║   ██║██╔══╝      ║")
+    print("  ║    ╚████╔╝ ██║  ██║██████╔╝██║  ██║╚██████╔╝███████╗    ║")
+    print("  ║     ╚═══╝  ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝    ║")
+    print("  ║                                                         ║")
+    print("  ║   JAGRATAM-CLI — CEO Command Interface                 ║")
+    print("  ║   62 AI Agents | 300+ Models | Unlimited Free           ║")
+    print("  ║   Backend: OpenRouter via OpenCode                      ║")
+    print("  ║                                                         ║")
+    print("  ╚═══════════════════════════════════════════════════════════╝")
+    print()
 
 
 def show_help():
