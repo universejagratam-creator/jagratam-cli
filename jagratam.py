@@ -3,10 +3,10 @@
 JAGRATAM-CLI — CEO Command Interface (Jagratam-Empire)
 ======================================================
 SOP MAS: Shadow Advisor + PRD sebagai kerangka kerja permanen.
-Backend: OpenRouter (free tier) — 55+ AI Executors
+Backend: OpenRouter free tier — Pipeline EXACT dari LinkDiskusi
 
 Cara pakai:
-  jagratam                # Buka langsung, ketik / untuk command
+  jagratam                # Buka langsung
   jagratam /help          # Bantuan
 """
 
@@ -17,118 +17,28 @@ import json
 import shutil
 import urllib.request
 import time
-from datetime import datetime
 
-# Fix Windows encoding for Unicode output
+# Fix Windows encoding
 import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from ai_agents import (
-    OPENROUTER_BASE, OPENROUTER_KEY,
-    AI_EXECUTORS, COLLABORATION_ROLES, TOPIC_ROLE_MAP,
-    get_best_model, list_all_agents,
+    OPENROUTER_BASE, OPENROUTER_KEY, FREE_MODELS,
+    AI_EXECUTORS, COLLABORATION_ROLES, TOPIC_ROLE_MAP, ROLE_MODEL_PREF,
+    get_best_model, assign_executors_to_roles, analyze_topic,
+    call_openrouter, get_ai_response, list_all_agents,
 )
 
 # ═══════════════════════════════════════════════════════════════
-# API CALL — Panggil model via OpenRouter
-# ═══════════════════════════════════════════════════════════════
-def call_ai_model(executor_id, user_prompt, context=""):
-    """Panggil AI executor via OpenRouter. Return response text."""
-    executor = AI_EXECUTORS.get(executor_id)
-    if not executor:
-        return f"[ERROR: Unknown executor: {executor_id}]"
-
-    if not OPENROUTER_KEY:
-        return "[ERROR: OpenRouter API key tidak ditemukan. Set OPENROUTER_API_KEY di .env]"
-
-    model = get_best_model(executor.get("model_preference", ["general"]))
-    system_prompt = executor.get("system_prompt", f"Kamu adalah {executor['name']}. Bahasa Indonesia.")
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    if context:
-        messages.append({"role": "system", "content": f"Konteks: {context}"})
-    messages.append({"role": "user", "content": user_prompt})
-
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_KEY}",
-        "Content-Type": "application/json",
-    }
-    data = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": 1000,
-        "temperature": 0.7,
-    }
-
-    try:
-        req = urllib.request.Request(
-            f"{OPENROUTER_BASE}/chat/completions",
-            data=json.dumps(data).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        resp = urllib.request.urlopen(req, timeout=120)
-        result = json.loads(resp.read())
-        content = result["choices"][0]["message"]["content"]
-        return content if content else "[Tidak ada respon]"
-    except Exception as e:
-        return f"[ERROR: {str(e)}]"
-
-
-def call_model_direct(model_id=None, user_prompt="", system_prompt=""):
-    """Panggil model langsung via OpenRouter. Default: openrouter/free."""
-    if not OPENROUTER_KEY:
-        return "[ERROR: OpenRouter API key tidak ditemukan]"
-
-    if not model_id:
-        model_id = "openrouter/free"
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": user_prompt})
-
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_KEY}",
-        "Content-Type": "application/json",
-    }
-    data = {
-        "model": model_id,
-        "messages": messages,
-        "max_tokens": 1500,
-        "temperature": 0.7,
-    }
-
-    try:
-        req = urllib.request.Request(
-            f"{OPENROUTER_BASE}/chat/completions",
-            data=json.dumps(data).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        resp = urllib.request.urlopen(req, timeout=120)
-        result = json.loads(resp.read())
-        content = result["choices"][0]["message"]["content"]
-        return content if content else "[Tidak ada respon]"
-    except Exception as e:
-        return f"[ERROR: {str(e)}]"
-
-
-# ═══════════════════════════════════════════════════════════════
-# /CHAT — RUANG RAPAT DEWAN KOMISARIS (Drama Style)
+# /CHAT — COLLABORATIVE PIPELINE (EXACT dari LinkDiskusi)
 # ═══════════════════════════════════════════════════════════════
 def chat_mode():
-    """Mode /chat — Semua 62 AI berbicara dalam format drama."""
-    # SEMUA AI dari AI_EXECUTORS
-    discussion_agents = list(AI_EXECUTORS.keys())
-
+    """Mode /chat — Pipeline kolaboratif: analyst -> architect -> coder+reviewer+strategist -> summarizer"""
     print()
     print("  ==================================================")
-    print("  RUANG RAPAT DEWAN KOMISARIS")
-    print(f"  {len(discussion_agents)} AI Berdiskusi | CEO sebagai Moderator")
+    print("  RUANG RAPAT — COLLABORATIVE PIPELINE")
+    print("  analyst -> architect -> coder+reviewer+strategist -> summarizer")
     print("  ==================================================")
     print("  Ketik topik untuk memulai rapat.")
     print("  Ketik / untuk kembali ke command menu.")
@@ -152,114 +62,123 @@ def chat_mode():
             list_all_agents()
             continue
 
-        # CEO buka rapat
+        # 1. Analisis topik
+        analysis = analyze_topic(topic)
+        category = analysis["category"]
+
+        # 2. Assign executors ke roles
+        role_assignments = assign_executors_to_roles(category)
+
         print()
         print("  ==================================================")
         print("  RAPAT DIMULAI")
         print(f"  Topik: {topic}")
+        print(f"  Kategori: {category}")
+        print(f"  Roles: {list(role_assignments.keys())}")
+        for role, executor in role_assignments.items():
+            ex = AI_EXECUTORS.get(executor, {})
+            print(f"    {role:<12s} -> {ex.get('name', executor)}")
         print("  ==================================================")
         print()
-        print("  CEO: Selamat datang di Rapat Dewan Komisaris.")
-        print(f"       Topik hari ini: \"{topic}\"")
-        print(f"       {len(discussion_agents)} AI akan berdiskusi.")
-        print("       Silakan berdiskusi sesuai keahlian masing-masing.")
-        print()
 
-        # FASE 1: SEMUA AI berbicara
-        all_responses = []
-        for i, agent_id in enumerate(discussion_agents, 1):
-            agent = AI_EXECUTORS.get(agent_id)
-            if not agent:
+        # 3. Jalankan pipeline
+        accumulated_context = f"Owner's request: {topic}\n\nTopic category: {category}\nKeywords: {', '.join(analysis.get('keywords', []))}\n"
+        pipeline_results = {}
+
+        # PHASE 1: Sequential — Analyst & Architect
+        print("  --- PHASE 1: ANALYST & ARCHITECT (Sequential) ---")
+        print()
+        for role in ["analyst", "architect"]:
+            if role not in role_assignments:
                 continue
 
-            # Bangun konteks dari respon sebelumnya
-            context = f"Topik rapat: {topic}"
-            if all_responses:
-                context += "\n\nRespon AI sebelumnya:\n"
-                for prev_name, prev_resp in all_responses[-3:]:
-                    prev_resp = prev_resp or "[Tidak ada respon]"
-                    context += f"- {prev_name}: {prev_resp[:200]}...\n"
+            executor_name = role_assignments[role]
+            role_config = COLLABORATION_ROLES[role]
+            executor_config = AI_EXECUTORS.get(executor_name, {})
 
-            prompt = f"Topik: {topic}\n\nBerikan pendapatmu sesuai keahlianmu. Bahasa Indonesia. 2-4 kalimat."
+            print(f"  [{role.upper()}] {executor_config.get('name', executor_name)} sedang berpikir...")
 
-            print(f"  [{i}/{len(discussion_agents)}] {agent['name']}...")
-            response = call_ai_model(agent_id, prompt, context)
-            if not response:
-                response = "[Tidak ada respon]"
-            all_responses.append((agent["name"], response))
+            result = get_ai_response(executor_name, topic, accumulated_context)
+            if result:
+                content = result["content"]
+                pipeline_results[role] = {"executor": executor_name, "executor_name": executor_config.get("name", executor_name), "content": content, "model": result.get("model", "")}
+                accumulated_context += f"\n\n--- {role_config['name']} ({executor_config.get('name', executor_name)}) ---\n{content}"
+                print()
+                print(f"  {role_config['name']} ({executor_config.get('name', executor_name)}):")
+                print(f"  {content}")
+                print()
+            else:
+                print(f"  [ERROR] {executor_config.get('name', executor_name)} tidak merespon")
 
-            # Tampilkan respons
-            print()
-            print(f"  {agent['name']}: {response}")
-            print()
-
-        # FASE 2: CEO rangkum
-        print("  ==================================================")
-        print("  CEO: Terima kasih semua AI. Saya rangkum diskusi:")
+        # PHASE 2: Parallel — Coder, Reviewer, Strategist
+        print("  --- PHASE 2: CODER + REVIEWER + STRATEGIST (Parallel) ---")
         print()
+        parallel_results = {}
+        for role in ["coder", "reviewer", "strategist"]:
+            if role not in role_assignments:
+                continue
 
-        summary_context = f"Topik: {topic}\n\n"
-        for name, resp in all_responses:
-            resp = resp or "[Tidak ada respon]"
-            summary_context += f"{name}: {resp[:300]}\n\n"
+            executor_name = role_assignments[role]
+            role_config = COLLABORATION_ROLES[role]
+            executor_config = AI_EXECUTORS.get(executor_name, {})
 
-        summary = call_model_direct(
-            None,
-            f"Rangkum diskusi ini dalam 3-5 poin utama. Bahasa Indonesia.",
-            f"Kamu adalah CEO yang merangkum rapat. Singkat dan jelas.\n\n{summary_context}"
-        )
-        print(f"  CEO: {summary}")
+            print(f"  [{role.upper()}] {executor_config.get('name', executor_name)} sedang berpikir...")
+
+            result = get_ai_response(executor_name, topic, accumulated_context)
+            if result:
+                content = result["content"]
+                parallel_results[role] = {"executor": executor_name, "executor_name": executor_config.get("name", executor_name), "content": content, "model": result.get("model", "")}
+                print()
+                print(f"  {role_config['name']} ({executor_config.get('name', executor_name)}):")
+                print(f"  {content}")
+                print()
+            else:
+                print(f"  [ERROR] {executor_config.get('name', executor_name)} tidak merespon")
+
+        # Merge parallel ke pipeline
+        pipeline_results.update(parallel_results)
+        for role, res in parallel_results.items():
+            role_config = COLLABORATION_ROLES[role]
+            accumulated_context += f"\n\n--- {role_config['name']} ({res['executor_name']}) ---\n{res['content']}"
+
+        # PHASE 3: Sequential — Summarizer
+        print("  --- PHASE 3: SUMMARIZER (Consolidation) ---")
         print()
+        if "summarizer" in role_assignments:
+            executor_name = role_assignments["summarizer"]
+            role_config = COLLABORATION_ROLES["summarizer"]
+            executor_config = AI_EXECUTORS.get(executor_name, {})
 
-        # FASE 3: Shadow Advisor — Kesimpulan
-        print("  ==================================================")
-        print("  SHADOW ADVISOR — LAPORAN KESIMPULAN")
-        print("  ==================================================")
-        print()
+            print(f"  [SUMMARIZER] {executor_config.get('name', executor_name)} sedang merangkum...")
 
-        conclusion_context = f"Topik: {topic}\n\nSemua respon:\n"
-        for name, resp in all_responses:
-            resp = resp or "[Tidak ada respon]"
-            conclusion_context += f"{name}: {resp[:400]}\n\n"
-        conclusion_context += f"\nRangkuman CEO: {summary}"
+            result = get_ai_response(executor_name, topic, accumulated_context)
+            if result:
+                content = result["content"]
+                pipeline_results["summarizer"] = {"executor": executor_name, "executor_name": executor_config.get("name", executor_name), "content": content, "model": result.get("model", "")}
+                print()
+                print(f"  {role_config['name']} ({executor_config.get('name', executor_name)}):")
+                print(f"  {content}")
+                print()
+            else:
+                print(f"  [ERROR] Summarizer tidak merespon")
 
-        conclusion = call_model_direct(
-            None,
-            f"Buat laporan lengkap:\n1. Situasi Sebenarnya\n2. Faktor Tersembunyi\n3. Risiko Utama\n4. Peluang Strategis\n5. Rencana Aksi\n6. Prediksi\n7. Kesimpulan CEO",
-            f"Kamu adalah Shadow Advisor. Aktif saat kesimpulan rapat. Prinsip: berpikir sebagai operator, fokus kenyataan, cari akar masalah.\n\n{conclusion_context}"
-        )
-        print(f"  {conclusion}")
-        print()
+        # HASIL AKHIR
         print("  ==================================================")
         print("  RAPAT SELESAI")
-        print("  Ketik topik baru untuk rapat berikutnya.")
+        print(f"  {len(pipeline_results)}/{len(role_assignments)} roles terisi")
         print("  ==================================================")
         print()
 
 
 # ═══════════════════════════════════════════════════════════════
-# /TERMINAL — RUANG OPERASIONAL (Task Assignment)
+# /TERMINAL — CEO ORCHESTRATE
 # ═══════════════════════════════════════════════════════════════
 def terminal_mode():
     """Mode /terminal — CEO distribusi tugas ke CTO/CISO/Agent."""
-    # CTO agents untuk eksekusi
-    cto_agents = {
-        "architect": "claude-opus",
-        "frontend": "qwen-3.5",
-        "backend": "deepseek-chat",
-        "devops": "mistral-large",
-        "security": "nemotron-super",
-        "data": "glm-5.2",
-        "mobile": "kimi-k2.5",
-        "ai-ml": "deepseek-r1",
-        "qa": "codex",
-        "selfheal": "groq-llama",
-    }
-
     print()
     print("  ==================================================")
     print("  RUANG OPERASIONAL")
-    print(f"  CEO Orchestrate | {len(cto_agents)} CTO Specialists")
+    print("  CEO Orchestrate | Task Assignment")
     print("  ==================================================")
     print("  Ketik tugas untuk dieksekusi.")
     print("  Ketik / untuk kembali ke command menu.")
@@ -283,66 +202,37 @@ def terminal_mode():
             list_all_agents()
             continue
 
-        # CEO analisis dan distribusi tugas
+        # Analisis dan eksekusi
+        analysis = analyze_topic(task_input)
+        category = analysis["category"]
+        role_assignments = assign_executors_to_roles(category)
+
         print()
-        print("  CEO: Menganalisis tugas dan mendistribusikan...")
-        print()
-
-        cto_list = "\n".join([f"  - {role}: {agent_id}" for role, agent_id in cto_agents.items()])
-        ceo_prompt = f"""Tugas dari Owner: {task_input}
-
-Daftar CTO yang tersedia:
-{cto_list}
-
-Analisis tugas ini dan distribusi ke CTO yang tepat.
-Format:
-→ CTO [Role]: [Task spesifik]
-
-Jangan coding sendiri. CEO adalah ORCHESTRATOR."""
-
-        ceo_assignment = call_model_direct(
-            None,
-            ceo_prompt,
-            "Kamu adalah CEO JAGRATAM di Ruang Operasional. Orkestrasi, bukan coding sendiri. Bahasa Indonesia."
-        )
-        print(f"  CEO: {ceo_assignment}")
+        print(f"  CEO: Menganalisis tugas (kategori: {category})...")
         print()
 
-        # Setiap CTO eksekusi task mereka
-        print("  ==================================================")
-        print("  EKSEKUSI DIMULAI")
-        print("  ==================================================")
-        print()
+        # Jalankan pipeline
+        accumulated_context = f"Task: {task_input}\nCategory: {category}\n"
+        pipeline_results = {}
 
-        for role, agent_id in cto_agents.items():
-            # Cek apakah CEO menugaskan role ini
-            if role.lower() not in ceo_assignment.lower():
+        for role in ["analyst", "architect", "coder", "reviewer", "strategist", "summarizer"]:
+            if role not in role_assignments:
                 continue
 
-            agent = AI_EXECUTORS.get(agent_id, {})
-            agent_name = agent.get("name", agent_id)
+            executor_name = role_assignments[role]
+            role_config = COLLABORATION_ROLES[role]
+            executor_config = AI_EXECUTORS.get(executor_name, {})
 
-            prompt = f"Tugas dari CEO: {task_input}\n\nKerjakan sesuai keahlianmu sebagai {role}. Bahasa Indonesia. Berikan output konkret."
+            print(f"  [{role.upper()}] {executor_config.get('name', executor_name)}...")
 
-            print(f"  [{agent_name}] mengerjakan tugas...")
-            result = call_ai_model(agent_id, prompt)
+            result = get_ai_response(executor_name, task_input, accumulated_context)
+            if result:
+                content = result["content"]
+                pipeline_results[role] = {"executor_name": executor_config.get("name", executor_name), "content": content}
+                accumulated_context += f"\n\n--- {role_config['name']} ---\n{content}"
+                print(f"  {content[:200]}...")
+                print()
 
-            print()
-            print(f"  {agent_name}: {result}")
-            print()
-
-        # CEO review
-        print("  ==================================================")
-        print("  CEO: Review hasil eksekusi...")
-        print()
-
-        review = call_model_direct(
-            None,
-            "Berikan ringkasan hasil eksekusi. Singkat. Bahasa Indonesia.",
-            f"Kamu adalah CEO review hasil kerja CTO. Tugas: {task_input}"
-        )
-        print(f"  CEO: {review}")
-        print()
         print("  ==================================================")
         print("  EKSEKUSI SELESAI")
         print("  ==================================================")
@@ -359,16 +249,15 @@ def show_slash_menu():
     print("  ==================================================")
     print()
     print("  --- MODE ---")
-    print("  /chat             Rapat Dewan Komisaris (semua AI berbicara)")
-    print("  /terminal         Ruang Operasional (CEO distribusi tugas)")
+    print("  /chat             Collaborative Pipeline (analyst->architect->coder->reviewer->strategist->summarizer)")
+    print("  /terminal         CEO Orchestrate (Task Assignment)")
     print()
     print("  --- INFO ---")
-    print("  /ai-list          Lihat semua AI agents")
+    print("  /ai-list          Lihat semua 62 AI agents + 13 models")
     print("  /status           Status sistem")
     print("  /sop              SOP Shadow Advisor")
     print()
     print("  --- UTILS ---")
-    print("  /opencode         Buka OpenCode langsung")
     print("  /clear            Clear layar")
     print("  /exit             Keluar")
     print()
@@ -384,7 +273,8 @@ def interactive_mode():
     print("  ==================================================")
     print("       JAGRATAM-CLI -- CEO Command Interface")
     print("       SOP MAS: Shadow Advisor + PRD Active")
-    print("       Backend: OpenRouter (55+ AI Free)")
+    print("       Backend: OpenRouter (13 Free Models)")
+    print("       Pipeline: EXACT dari LinkDiskusi")
     print("  ==================================================")
     print()
     print("  Ketik / untuk command menu | Ketik pesan langsung untuk chat CEO")
@@ -441,8 +331,6 @@ def interactive_mode():
                 show_status()
             elif cmd == "/sop":
                 show_sop()
-            elif cmd == "/opencode":
-                run_opencode()
             elif cmd == "/clear":
                 os.system("cls" if os.name == "nt" else "clear")
             elif cmd == "/exit":
@@ -452,17 +340,23 @@ def interactive_mode():
                 show_slash_menu()
             continue
 
-        # Default: chat dengan CEO + Shadow Advisor
+        # Default: chat dengan Shadow Advisor
         print()
         print("  [Shadow Advisor] Memproses...")
         print()
 
-        response = call_model_direct(
-            None,
-            user_prompt=f"Pesan dari Owner: {user_input}\n\nJawab dengan format Shadow Advisor:\n1. Situasi Sebenarnya\n2. Faktor Tersembunyi\n3. Risiko Utama\n4. Peluang Strategis\n5. Rencana Aksi\n6. Prediksi\n7. Kesimpulan CEO",
-            system_prompt="Kamu adalah Shadow Advisor, sistem intelijen strategis. Berpikir sebagai operator, fokus kenyataan, cari akar masalah. Bahasa Indonesia."
-        )
-        print(f"  CEO: {response}")
+        messages = [
+            {"role": "system", "content": "Kamu adalah Shadow Advisor, sistem intelijen strategis. Berpikir sebagai operator, fokus kenyataan, cari akar masalah. Bahasa Indonesia."},
+            {"role": "user", "content": f"Pesan dari Owner: {user_input}\n\nJawab dengan format Shadow Advisor:\n1. Situasi Sebenarnya\n2. Faktor Tersembunyi\n3. Risiko Utama\n4. Peluang Strategis\n5. Rencana Aksi\n6. Prediksi\n7. Kesimpulan CEO"},
+        ]
+        model = get_best_model(["reasoning", "general"])
+        response = call_openrouter(model, messages)
+        if not response:
+            for m in FREE_MODELS:
+                response = call_openrouter(m["id"], messages)
+                if response:
+                    break
+        print(f"  CEO: {response if response else '[Tidak ada respon]'}")
         print()
 
 
@@ -473,12 +367,10 @@ def show_status():
     print("  ==================================================")
     print(f"  OpenCode    : {'[OK]' if shutil.which('opencode') else '[!!] Tidak ditemukan'}")
     print(f"  OpenRouter  : {'[OK] Key ada' if OPENROUTER_KEY else '[!!] Key tidak ditemukan'}")
-    print(f"  AI Agents   : {len(AI_EXECUTORS)} total")
-    print(f"  Backend     : openrouter/free (auto-select)")
+    print(f"  Executors   : {len(AI_EXECUTORS)} persona")
+    print(f"  Models      : {len(FREE_MODELS)} free models (API)")
+    print(f"  Pipeline    : analyst->architect->coder+reviewer+strategist->summarizer")
     print(f"  Shadow Adv. : [OK] SOP MAS Active")
-    print(f"  PRD         : [OK] Active")
-    print(f"  /chat       : Semua AI berbicara (drama style)")
-    print(f"  /terminal   : CEO distribusi tugas ke CTO")
     print(f"  ==================================================")
     print()
 
@@ -497,37 +389,6 @@ def show_sop():
     print("  6. Prediksi")
     print("  7. Kesimpulan CEO")
     print()
-    print("  Prinsip:")
-    print("  - Berpikir sebagai operator, bukan penonton")
-    print("  - Fokus pada kenyataan, bukan asumsi")
-    print("  - Cari akar masalah, bukan gejalanya")
-    print("  - Utamakan efektivitas, bukan popularitas")
-    print()
-
-
-def find_opencode():
-    oc_path = shutil.which("opencode")
-    if oc_path:
-        return oc_path
-    known_paths = [
-        r"C:\nvm4w\nodejs\opencode.ps1",
-        r"C:\nvm4w\nodejs\node_modules\opencode-ai\bin\opencode.exe",
-    ]
-    for p in known_paths:
-        if os.path.exists(p):
-            return p
-    return None
-
-
-def run_opencode(args=None):
-    oc = find_opencode()
-    if not oc:
-        print("  ERROR: OpenCode tidak ditemukan.")
-        return 1
-    cmd = [oc] + (args or [])
-    if oc.endswith(".ps1"):
-        cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File", oc] + (args or [])
-    return subprocess.call(cmd)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -554,7 +415,6 @@ def main():
     if cmd == "/status":
         show_status()
         return
-    run_opencode(args)
 
 
 if __name__ == "__main__":
