@@ -16,22 +16,39 @@ import urllib.request
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 
 def _load_openrouter_key():
-    """Load OpenRouter API key dari .env"""
+    """Load OpenRouter API key — ANTI RIBET, auto-detect dari berbagai lokasi."""
+    # 1. Environment variable
     key = os.environ.get("OPENROUTER_API_KEY", "")
     if key:
         return key
-    env_paths = [
+
+    # 2. Cari di berbagai lokasi (prioritas)
+    search_paths = [
+        # Lokasi utama
         os.path.expanduser("~/PROJECT/multi-agent-system/.env"),
+        os.path.expanduser("~/PROJECT/multi-agent-system/config/.env"),
+        os.path.expanduser("~/PROJECT/multi-agent-system/config/.env.bak"),
+        # Backup lokasi
         os.path.expanduser("~/.env"),
+        os.path.expanduser("~/PROJECT/jagratam-cli/.env"),
+        # Lokasi relatif dari script
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
     ]
-    for path in env_paths:
+
+    for path in search_paths:
         if os.path.exists(path):
-            with open(path) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("OPENROUTER_API_KEY="):
-                        _, _, val = line.partition("=")
-                        return val.strip().strip('"').strip("'")
+            try:
+                with open(path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("OPENROUTER_API_KEY="):
+                            _, _, val = line.partition("=")
+                            val = val.strip().strip('"').strip("'")
+                            if val and val.startswith("sk-or-"):
+                                return val
+            except Exception:
+                continue
+
     return ""
 
 OPENROUTER_KEY = _load_openrouter_key()
