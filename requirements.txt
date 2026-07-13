@@ -1,0 +1,3 @@
+# JAGRATAM-CLI Requirements
+# Tidak ada dependency tambahan - menggunakan Python stdlib saja
+# OpenCode dan 9Router diinstall terpisah
